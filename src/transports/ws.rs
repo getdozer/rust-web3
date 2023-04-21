@@ -282,30 +282,33 @@ fn handle_message(
             }
         }
     } else {
-        let response = helpers::to_response_from_slice(data);
-        let outputs = match response {
-            Ok(rpc::Response::Single(output)) => vec![output],
-            Ok(rpc::Response::Batch(outputs)) => outputs,
-            _ => vec![],
-        };
+        match helpers::to_response_from_slice(data) {
+            Ok(response) => {
+                let outputs = match response {
+                    rpc::Response::Single(output) => vec![output],
+                    rpc::Response::Batch(outputs) => outputs,
+                };
 
-        let id = match outputs.get(0) {
-            Some(&rpc::Output::Success(ref success)) => success.id.clone(),
-            Some(&rpc::Output::Failure(ref failure)) => failure.id.clone(),
-            None => rpc::Id::Num(0),
-        };
+                let id = match outputs.get(0) {
+                    Some(&rpc::Output::Success(ref success)) => success.id.clone(),
+                    Some(&rpc::Output::Failure(ref failure)) => failure.id.clone(),
+                    None => rpc::Id::Num(0),
+                };
 
-        if let rpc::Id::Num(num) = id {
-            if let Some(request) = pending.remove(&(num as usize)) {
-                log::trace!("Responding to (id: {:?}) with {:?}", num, outputs);
-                if let Err(err) = request.send(helpers::to_results_from_outputs(outputs)) {
-                    log::warn!("Sending a response to deallocated channel: {:?}", err);
+                if let rpc::Id::Num(num) = id {
+                    if let Some(request) = pending.remove(&(num as usize)) {
+                        log::trace!("Responding to (id: {:?}) with {:?}", num, outputs);
+                        if let Err(err) = request.send(helpers::to_results_from_outputs(outputs)) {
+                            log::warn!("Sending a response to deallocated channel: {:?}", err);
+                        }
+                    } else {
+                        log::warn!("Got response for unknown request (id: {:?})", num);
+                    }
+                } else {
+                    log::warn!("Got unsupported response (id: {:?})", id);
                 }
-            } else {
-                log::warn!("Got response for unknown request (id: {:?})", num);
             }
-        } else {
-            log::warn!("Got unsupported response (id: {:?})", id);
+            Err(e) => log::warn!("Got unsupported response: {:?}", e)
         }
     }
 }
